@@ -14,14 +14,31 @@ from pipecat.processors.user_idle_processor import UserIdleProcessor
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.cartesia.stt import CartesiaSTTService
+from pipecat.frames.frames import EndTaskFrame
+from pipecat.processors.frame_processor import FrameDirection
 
 load_dotenv(dotenv_path="../.env", override=True)
 
 
 # ユーザーのアイドル状態を検知した際に実行されるハンドラ
-async def handle_user_idle(processor):
-    # ユーザーがいるか呼びかける
-    await processor.push_frame(TTSSpeakFrame("Are you still there?"))
+# async def handle_user_idle(processor):
+#     # ユーザーがいるか呼びかける
+#     await processor.push_frame(TTSSpeakFrame("Are you still there?"))
+
+# アイドル状態の検知回数に応じて処理を分けるパターン
+async def handle_user_idle(processor, retry_count: int):
+    if retry_count == 1:
+        await processor.push_frame(TTSSpeakFrame("Are you still there?"))
+        return True # Trueを返した場合はモニタリングを継続
+    elif retry_count == 2:
+        await processor.push_frame(TTSSpeakFrame("Would you like to continue our conversation?"))
+        return True
+    else:
+        # 3回目のアイドル検知で発話後に会話を終了する
+        await processor.push_frame(TTSSpeakFrame("I'll leave you for now. Have a nice day!"))
+        # この終了の方法だと実際に上の発話が開始される前に会話のセッションが終了してしまう
+        await processor.push_frame(EndTaskFrame(), FrameDirection.UPSTREAM)
+        return False # アイドル状態のモニタリングを停止
 
 
 async def run_example(transport: BaseTransport, _: argparse.Namespace, handle_sigint: bool):
